@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz Master</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(to right, #1e3c72, #2a5298);
+    color: #fff;
+    text-align: center;
+    overflow-x: hidden;
+}
+#start-screen, #quiz-container, #result-screen {
+    display: none;
+    height: 100vh;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    padding: 20px;
+}
+#start-screen.active, #quiz-container.active, #result-screen.active {
+    display: flex;
+}
+h1 { font-size: 3em; margin-bottom: 20px; }
+button {
+    padding: 15px 30px;
+    font-size: 1.2em;
+    border: none;
+    border-radius: 10px;
+    background-color: #ff6f61;
+    color: #fff;
+    cursor: pointer;
+    transition: 0.3s;
+    margin: 5px;
+}
+button:hover { background-color: #ff3b2d; }
+input {
+    padding: 10px;
+     font-size: 1.2em; 
+    border-radius: 8px;
+    border: none;
+    margin-bottom: 15px;
+    text-align: center;
+}
+.question { font-size: 2em; margin: 20px 0; opacity: 1; transition: opacity 0.3s; position: relative; }
+.fade-out { opacity: 0; }
+.options button { display: block; margin: 10px auto; width: 200px; transition: transform 0.2s, background-color 0.3s; }
+.options button:hover { transform: scale(1.1); }
+#progress { width: 100%; background-color: #ccc; border-radius: 10px; overflow: hidden; margin: 20px 0; height: 20px; }
+#progress-bar { height: 100%; width: 0%; background-color: #ff6f61; transition: width 0.3s; }
+#timer { font-size: 1.5em; margin-bottom: 10px; }
+#ranking { margin-top: 20px; text-align: center; }
+#ranking h2 { margin-bottom: 10px; }
+#ranking-list li { margin: 5px 0; font-size: 1.2em; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(0); animation: pop 0.6s forwards; }
+@keyframes pop { 0% { opacity: 0; transform: scale(0); } 50% { opacity: 1; transform: scale(1.3); } 100% { opacity: 1; transform: scale(1); } }
+.confetti { position: absolute; width: 10px; height: 10px; background-color: red; opacity: 0.8; pointer-events: none; animation: fall 1.5s linear forwards; border-radius: 50%; }
+@keyframes fall { 0% { transform: translateY(0) rotate(0deg); opacity:1; } 100% { transform: translateY(400px) rotate(360deg); opacity:0; } }
+.flash-red { animation: flashRed 0.5s forwards; }
+@keyframes flashRed { 0% { background-color: rgba(255,0,0,0.5); } 100% { background-color: transparent; } }
+</style>
+</head>
+<body>
+
+<audio id="bg-music" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+</audio>
+<audio id="correct-sound">
+    <source src="https://www.soundjay.com/buttons/sounds/button-3.mp3" type="audio/mpeg">
+</audio>
+<audio id="wrong-sound">
+    <source src="https://www.soundjay.com/buttons/sounds/button-10.mp3" type="audio/mpeg">
+</audio>
+
+<div id="start-screen" class="active">
+    <h1>Quiz Master</h1>
+    <input type="text" id="nickname" placeholder="Digite seu Nickname" maxlength="12">
+    <button id="start-btn">Start</button>
+</div>
+
+<div id="quiz-container">
+    <div id="timer">Tempo: 15s</div>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div class="question" id="question"></div>
+    <div class="options">
+        <button class="option-btn" id="option0"></button>
+        <button class="option-btn" id="option1"></button>
+        <button class="option-btn" id="option2"></button>
+        <button class="option-btn" id="option3"></button>
+    </div>
+    <div id="score"></div>
+</div>
+
+<div id="result-screen">
+     <h1>Fim do Quiz!</h1> 
+    <p id="final-score"></p>
+    <div id="ranking">
+        <h2>Top 5 Pontuações</h2>
+        <ol id="ranking-list"></ol>
+    </div>
+    <button id="restart-btn">Jogar Novamente</button>
+    <button id="reset-ranking-btn">Resetar Ranking</button>
+</div>
+
+<script>
+const startBtn=document.getElementById('start-btn');
+const restartBtn=document.getElementById('restart-btn');
+const resetBtn=document.getElementById('reset-ranking-btn');
+const startScreen=document.getElementById('start-screen');
+const quizContainer=document.getElementById('quiz-container');
+const resultScreen=document.getElementById('result-screen');
+const questionEl=document.getElementById('question');
+const optionBtns=Array.from(document.getElementsByClassName('option-btn'));
+const scoreEl=document.getElementById('score');
+const finalScoreEl=document.getElementById('final-score');
+const progressBar=document.getElementById('progress-bar');
+const timerEl=document.getElementById('timer');
+const rankingList=document.getElementById('ranking-list');
+const nicknameInput=document.getElementById('nickname');
+
+const bgMusic=document.getElementById('bg-music');
+const correctSound=document.getElementById('correct-sound');
+const wrongSound=document.getElementById('wrong-sound');
+
+let currentQuestion=0, score=0, questions=[], timeLeft=15, timerInterval, playerNickname="Player";
+
+function generateQuestions(count){
+    const ops=['+','-','×','÷'], qs=[];
+    while(qs.length<count){
+        const op=ops[Math.floor(Math.random()*ops.length)];
+        let a=Math.floor(Math.random()*20)+1, b=Math.floor(Math.random()*20)+1, answer;
+        if(op==='+') answer=a+b; else if(op==='-') answer=a-b; else if(op==='×') answer=a*b; else { answer=a; a=a*b; }
+        const options=[answer];
+        while(options.length<4){
+            let fake=answer+Math.floor(Math.random()*10)-5;
+            if(!options.includes(fake)) options.push(fake);
+        }
+        options.sort(()=>Math.random()-0.5);
+        const correctIndex=options.indexOf(answer);
+        qs.push({question:`${a} ${op} ${b} = ?`,options:options.map(String),answer:correctIndex});
+    }
+    return qs;
+}
+
+startBtn.addEventListener('click',()=>{
+    const nick=nicknameInput.value.trim();
+    playerNickname=nick?nick:"Player";
+    questions=generateQuestions(15);
+    startScreen.classList.remove('active');
+    quizContainer.classList.add('active');
+    bgMusic.play();
+    currentQuestion=0; score=0;
+    showQuestion();
+});
+
+restartBtn.addEventListener('click',()=>{
+    resultScreen.classList.remove('active');
+    quizContainer.classList.add('active');
+    currentQuestion=0; score=0;
+    questions=generateQuestions(15);
+    showQuestion();
+});
+
+resetBtn.addEventListener('click',()=>{
+        localStorage.removeItem('quizMasterRanking');    
+    updateRanking(playerNickname,0,true);
+});
+
+function showQuestion(){
+    clearInterval(timerInterval); timeLeft=15;
+    timerEl.textContent=`Tempo: ${timeLeft}s`;
+        timerInterval=setInterval(()=>{    
+        timeLeft--; timerEl.textContent=`Tempo: ${timeLeft}s`;
+        if(timeLeft<=0){ clearInterval(timerInterval); handleAnswer(-1); }
+    },1000);
+
+    const current=questions[currentQuestion];
+    questionEl.classList.add('fade-out');
+    setTimeout(()=>{
+        questionEl.textContent=current.question;
+        optionBtns.forEach((btn,index)=>{ btn.textContent=current.options[index]; btn.disabled=false; btn.style.backgroundColor='#ff6f61'; });
+        questionEl.classList.remove('fade-out');
+             scoreEl.textContent=`Pontuação: ${score}`;     
+        progressBar.style.width=`${((currentQuestion+1)/questions.length)*100}%`;
+    },300);
+}
+
+function handleAnswer(selected){
+       clearInterval(timerInterval);   
+    const correctIndex=questions[currentQuestion].answer;
+    optionBtns.forEach(btn=>btn.disabled=true);
+    optionBtns[correctIndex].style.backgroundColor='green';
+      justify-content: center;  
+    if(selected===correctIndex){ score+=10+Math.floor(timeLeft/3); correctSound.play(); launchConfetti(); }
+    else if(selected!==-1){ wrongSound.play(); questionEl.classList.add('flash-red'); setTimeout(()=>questionEl.classList.remove('flash-red'),500); }
+    currentQuestion++;
+        font-family: Arial, sans-serif;    
+}
+
+function showResult(){
+    quizContainer.classList.remove('active'); resultScreen.classList.add('active');
+        finalScoreEl.textContent=`${playerNickname}, sua pontuação: ${score}`;    
+    updateRanking(playerNickname,score);
+       font-size: 1.2em;   
+
+function updateRanking(nickname,newScore,reset=false){
+    let ranking=JSON.parse(localStorage.getItem('quizMasterRanking'))||[];
+        justify-content: center;    
+    ranking=ranking.sort((a,b)=>b.score-a.score).slice(0,5);
+     <h1>Fim do Quiz!</h1> 
+    const medals=['🥇','🥈','🥉','',''];
+    rankingList.innerHTML='';
+          <h2>Top 5 Pontuações</h2>  
+        const li=document.createElement('li');
+        li.textContent=`${medals[index]} ${entry.nickname}: ${entry.score}`;
+        font-size: 1.2em;    
+        rankingList.appendChild(li);
+    });
+          font-size: 1.2em;      
+
+function launchConfetti(){
+    for(let i=0;i<20;i++){
+        const confetti=document.createElement('div');
+        confetti.classList.add('confetti');
+        confetti.style.backgroundColor=`hsl(${Math.random()*360},100%,50%)`;
+        confetti.style.left=`${Math.random()*window.innerWidth}px`;
+        confetti.style.top='0px';
+        document.body.appendChild(confetti);
+        setTimeout(()=>confetti.remove(),1500);
+    }
+          font-size: 1.2em;      
+
+optionBtns.forEach((btn,index)=>{ btn.addEventListener('click',()=>handleAnswer(index)); });
+</script>
+          text-align: center;      
+</html>
